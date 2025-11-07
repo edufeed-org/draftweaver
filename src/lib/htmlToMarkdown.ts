@@ -1,8 +1,10 @@
 // Minimal HTML -> Markdown converter tailored for DraftWeaver.
 // Not full fidelity, but good enough for WordPress-style content.
 
-export function htmlToMarkdown(html: string): string {
+export function htmlToMarkdown(html: string, baseUrl?: string): string {
   if (!html) return "";
+
+  const origin = getOrigin(baseUrl);
 
   // Normalize newlines
   let md = html.replace(/\r\n?/g, "\n");
@@ -64,13 +66,21 @@ export function htmlToMarkdown(html: string): string {
       }) + "\n";
   });
 
-  // Images: ![alt](src)
-  md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, "![$2]($1)");
-  md = md.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, "![$1]($2)");
-  md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, "![]($1)");
+  // Images: ![alt](src) with absolute URLs
+  md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, (_m, src: string, alt: string) => {
+    return `![${alt}](${absolutize(src, origin)})`;
+  });
+  md = md.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, alt: string, src: string) => {
+    return `![${alt}](${absolutize(src, origin)})`;
+  });
+  md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, src: string) => {
+    return `![](${absolutize(src, origin)})`;
+  });
 
-  // Links: [text](href)
-  md = md.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)");
+  // Links: [text](href) with absolute URLs when needed
+  md = md.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, text: string) => {
+    return `[${text}](${absolutize(href, origin)})`;
+  });
 
   // Strip remaining tags
   md = md.replace(/<[^>]+>/g, "");
@@ -89,4 +99,25 @@ function decodeHtml(text: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
+}
+
+function getOrigin(baseUrl?: string): string | undefined {
+  try {
+    if (!baseUrl) return undefined;
+    const url = new URL(baseUrl);
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
+function absolutize(url: string, origin?: string): string {
+  if (!url) return url;
+  // Already absolute (http, https, data, etc.)
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return url;
+  if (origin) {
+    if (url.startsWith("/")) return origin + url;
+    return origin.replace(/\/$/, "") + "/" + url;
+  }
+  return url;
 }

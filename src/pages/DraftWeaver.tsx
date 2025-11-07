@@ -165,17 +165,17 @@ const DraftWeaverPage: React.FC = () => {
         let image: string | undefined;
         if (typeof post.jetpack_featured_media_url === "string") {
           image = post.jetpack_featured_media_url;
-        } else if (post._embedded?.['wp:featuredmedia']?.[0]?.source_url) {
-          image = String(post._embedded['wp:featuredmedia'][0].source_url);
+        } else if (post._embedded?.["wp:featuredmedia"]?.[0]?.source_url) {
+          image = String(post._embedded["wp:featuredmedia"][0].source_url);
         }
 
         // Extract tags from embedded taxonomies when available
         const tags: string[] = [];
-        if (Array.isArray(post._embedded?.['wp:term'])) {
-          for (const termGroup of post._embedded['wp:term']) {
+        if (Array.isArray(post._embedded?.["wp:term"])) {
+          for (const termGroup of post._embedded["wp:term"]) {
             if (!Array.isArray(termGroup)) continue;
             for (const term of termGroup) {
-              if (term.taxonomy === 'post_tag') {
+              if (term.taxonomy === "post_tag") {
                 const value = (term.slug || term.name || "").toString().trim();
                 if (value && !tags.includes(value)) {
                   tags.push(value);
@@ -186,7 +186,7 @@ const DraftWeaverPage: React.FC = () => {
         }
 
         const identifier = sanitizeIdentifier(title || canonical);
-        const markdown = htmlToMarkdown(html);
+        const markdown = htmlToMarkdown(html, canonical);
 
         setArticle({
           title,
@@ -209,15 +209,9 @@ const DraftWeaverPage: React.FC = () => {
     },
   });
 
-  const onFieldChange = useCallback(
-    (patch: Partial<MappedArticle>) => {
-      setArticle((prev) => ({
-        ...prev,
-        ...patch,
-      }));
-    },
-    []
-  );
+  const onFieldChange = useCallback((patch: Partial<MappedArticle>) => {
+    setArticle((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const nostrPreview = useMemo(() => buildNostrEvent(article, user?.pubkey), [article, user?.pubkey]);
 
@@ -476,12 +470,8 @@ const DraftWeaverPage: React.FC = () => {
                 </Button>
               </div>
 
-              {status && (
-                <p className="text-[10px] text-sky-300/90 pt-1">{status}</p>
-              )}
-              {error && (
-                <p className="text-[10px] text-red-400/90 pt-1">{error}</p>
-              )}
+              {status && <p className="text-[10px] text-sky-300/90 pt-1">{status}</p>}
+              {error && <p className="text-[10px] text-red-400/90 pt-1">{error}</p>}
             </CardContent>
           </Card>
         </section>
@@ -512,9 +502,7 @@ const DraftWeaverPage: React.FC = () => {
                     {article.title || "Your long-form title will appear here"}
                   </h2>
                   {article.summary && (
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      {article.summary}
-                    </p>
+                    <p className="text-xs text-slate-300 leading-relaxed">{article.summary}</p>
                   )}
                   {article.canonicalUrl && (
                     <a
