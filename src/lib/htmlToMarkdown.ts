@@ -4,7 +4,7 @@
 export function htmlToMarkdown(html: string, baseUrl?: string): string {
   if (!html) return "";
 
-  const origin = getOrigin(baseUrl);
+  const { origin, basePath } = getBase(baseUrl);
 
   // Normalize newlines
   let md = html.replace(/\r\n?/g, "\n");
@@ -68,18 +68,18 @@ export function htmlToMarkdown(html: string, baseUrl?: string): string {
 
   // Images: ![alt](src) with absolute URLs
   md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi, (_m, src: string, alt: string) => {
-    return `![${alt}](${absolutize(src, origin)})`;
+    return `![${alt}](${absolutize(src, origin, basePath)})`;
   });
   md = md.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, alt: string, src: string) => {
-    return `![${alt}](${absolutize(src, origin)})`;
+    return `![${alt}](${absolutize(src, origin, basePath)})`;
   });
   md = md.replace(/<img[^>]*src=["']([^"']+)["'][^>]*>/gi, (_m, src: string) => {
-    return `![](${absolutize(src, origin)})`;
+    return `![](${absolutize(src, origin, basePath)})`;
   });
 
   // Links: [text](href) with absolute URLs when needed
   md = md.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, text: string) => {
-    return `[${text}](${absolutize(href, origin)})`;
+    return `[${text}](${absolutize(href, origin, basePath)})`;
   });
 
   // Strip remaining tags
@@ -101,22 +101,26 @@ function decodeHtml(text: string): string {
     .replace(/&#39;/g, "'");
 }
 
-function getOrigin(baseUrl?: string): string | undefined {
+function getBase(baseUrl?: string): { origin?: string; basePath?: string } {
   try {
-    if (!baseUrl) return undefined;
+    if (!baseUrl) return {};
     const url = new URL(baseUrl);
-    return url.origin;
+    const origin = url.origin;
+    const path = url.pathname || "/";
+    const baseDir = path.endsWith("/") ? path : path.slice(0, path.lastIndexOf("/") + 1);
+    return { origin, basePath: baseDir };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
-function absolutize(url: string, origin?: string): string {
+function absolutize(url: string, origin?: string, basePath?: string): string {
   if (!url) return url;
   // Already absolute (http, https, data, etc.)
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return url;
   if (origin) {
     if (url.startsWith("/")) return origin + url;
+    if (basePath) return origin + basePath + url;
     return origin.replace(/\/$/, "") + "/" + url;
   }
   return url;
