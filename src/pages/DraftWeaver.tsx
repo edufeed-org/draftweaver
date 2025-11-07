@@ -14,12 +14,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { LoginArea } from "@/components/auth/LoginArea";
+import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
+import { markdownToHtml } from "@/lib/markdown";
 
 interface MappedArticle {
   title: string;
   identifier: string;
   summary: string;
-  content: string;
+  content: string; // markdown
+  rawHtml: string; // original HTML from WordPress
   image?: string;
   canonicalUrl?: string;
   tags: string[];
@@ -64,18 +67,16 @@ const buildNostrEvent = (article: MappedArticle, pubkey: string | undefined): No
     }
   }
 
-  tags.push(["alt", "NIP-23 long-form article mapped from WordPress"]);
+  tags.push(["alt", "NIP-23 long-form article mapped from WordPress (markdown content)"]);
+  tags.push(["client", "draftweaver"]);
 
   if (pubkey) {
     try {
       const npub = nip19.npubEncode(pubkey);
-      tags.push(["client", "draftweaver"]);
       tags.push(["author", npub]);
     } catch {
-      tags.push(["client", "draftweaver"]);
+      // ignore
     }
-  } else {
-    tags.push(["client", "draftweaver"]);
   }
 
   return {
@@ -89,19 +90,19 @@ const DraftWeaverPage: React.FC = () => {
   useSeoMeta({
     title: "DraftWeaver | Map WordPress Posts to NIP-23 Long-form",
     description:
-      "Fetch from WordPress, refine your article, preview the final Nostr long-form event, and publish with confidence.",
+      "Fetch from WordPress, convert to markdown, preview the final Nostr long-form event, and publish with confidence.",
   });
 
   const { user } = useCurrentUser();
   const { mutateAsync: publishEvent } = useNostrPublish();
 
   const [wpUrl, setWpUrl] = useState("");
-  const [rawHtml, setRawHtml] = useState("");
   const [article, setArticle] = useState<MappedArticle>({
     title: "",
     identifier: "",
     summary: "",
     content: "",
+    rawHtml: "",
     image: "",
     canonicalUrl: "",
     tags: [],
@@ -155,7 +156,7 @@ const DraftWeaverPage: React.FC = () => {
         }
 
         const title = (post.title?.rendered as string | undefined) ?? "";
-        const content = (post.content?.rendered as string | undefined) ?? "";
+        const html = (post.content?.rendered as string | undefined) ?? "";
         const excerptHtml = (post.excerpt?.rendered as string | undefined) ?? "";
         const summary = extractText(excerptHtml).slice(0, 280);
         const canonical = typeof post.link === "string" ? post.link : wpUrl.trim();
@@ -173,19 +174,20 @@ const DraftWeaverPage: React.FC = () => {
         }
 
         const identifier = sanitizeIdentifier(title || canonical);
+        const markdown = htmlToMarkdown(html);
 
-        setRawHtml(content);
         setArticle({
           title,
           identifier,
           summary,
-          content,
+          content: markdown,
+          rawHtml: html,
           image,
           canonicalUrl: canonical,
           tags,
         });
 
-        setStatus("Imported successfully. Review and refine before publishing.");
+        setStatus("Imported and converted to markdown. Review and refine before publishing.");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error while fetching WordPress content.";
         setError(msg);
@@ -202,7 +204,7 @@ const DraftWeaverPage: React.FC = () => {
         ...patch,
       }));
     },
-    [setArticle]
+    []
   );
 
   const nostrPreview = useMemo(() => buildNostrEvent(article, user?.pubkey), [article, user?.pubkey]);
@@ -231,19 +233,17 @@ const DraftWeaverPage: React.FC = () => {
     }
   };
 
-  const jsonPreview = useMemo(
-    () => JSON.stringify(nostrPreview, null, 2),
-    [nostrPreview]
-  );
+  const jsonPreview = useMemo(() => JSON.stringify(nostrPreview, null, 2), [nostrPreview]);
+  const htmlPreview = useMemo(() => markdownToHtml(article.content), [article.content]);
 
   return (
     <div
       className={cn(
-        "min-h-screen bg-gradient-to-b from-slate-950 via-slate-930 to-slate-900 text-slate-50",
+        "min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-50",
         "flex flex-col"
       )}
     >
-      <header className="border-b border-white/5 backdrop-blur-xl bg-slate-950/70 sticky top-0 z-30">
+      <header className="border-b border-slate-800/80 backdrop-blur-xl bg-slate-950/90 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4 justify-between">
           <div className="flex items-center gap-3">
             <div className="relative h-9 w-9 rounded-2xl bg-gradient-to-br from-violet-500 via-sky-400 to-emerald-400 shadow-lg shadow-violet-500/40">
@@ -260,7 +260,7 @@ const DraftWeaverPage: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Map WordPress stories into Nostr-native long-form in one elegant flow.
+                Map WordPress stories into markdown-based Nostr long-form.
               </p>
             </div>
           </div>
@@ -269,7 +269,7 @@ const DraftWeaverPage: React.FC = () => {
               href="https://soapbox.pub/mkstack"
               target="_blank"
               rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700/70 text-[10px] text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-900/90 transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-900/95 border border-slate-700/70 text-[10px] text-slate-300 hover:text-sky-300 hover:border-sky-500/60 hover:bg-slate-900 transition-colors"
             >
               <span className="h-1 w-1 rounded-full bg-sky-400 animate-pulse" />
               Vibed with MKStack
@@ -281,7 +281,7 @@ const DraftWeaverPage: React.FC = () => {
 
       <main className="flex-1 max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4">
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)] gap-4">
-          <Card className="bg-slate-950/70 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
             <CardHeader className="pb-3 flex flex-col gap-2">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
                 <span className="flex items-center gap-2">
@@ -302,7 +302,7 @@ const DraftWeaverPage: React.FC = () => {
                     placeholder="https://your-site.com/your-post"
                     value={wpUrl}
                     onChange={(e) => setWpUrl(e.target.value)}
-                    className="bg-slate-900/70 border-slate-700/70 text-xs placeholder:text-slate-600"
+                    className="bg-slate-900 border-slate-700/80 text-xs placeholder:text-slate-600 text-slate-100"
                   />
                   <Button
                     type="button"
@@ -317,26 +317,42 @@ const DraftWeaverPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                  Source HTML (read-only)
-                </Label>
-                <Textarea
-                  value={rawHtml}
-                  onChange={(e) => setRawHtml(e.target.value)}
-                  className="bg-slate-900/70 border-slate-800/80 text-[10px] font-mono h-32 resize-y"
-                  placeholder="HTML content fetched from WordPress will appear here. You can tweak if needed."
-                />
-              </div>
+              <Tabs defaultValue="markdown">
+                <TabsList className="grid grid-cols-2 mb-2 bg-slate-900/90 border border-slate-800/80">
+                  <TabsTrigger value="markdown" className="text-[9px]">Markdown</TabsTrigger>
+                  <TabsTrigger value="html" className="text-[9px]">Original HTML</TabsTrigger>
+                </TabsList>
+                <TabsContent value="markdown">
+                  <Label className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
+                    Editable markdown (stored as Nostr content)
+                  </Label>
+                  <Textarea
+                    value={article.content}
+                    onChange={(e) => onFieldChange({ content: e.target.value })}
+                    className="mt-1 bg-slate-900 border-slate-800/80 text-[11px] leading-relaxed h-40 resize-y text-slate-100"
+                    placeholder="Markdown converted from your WordPress post will appear here."
+                  />
+                </TabsContent>
+                <TabsContent value="html">
+                  <Label className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
+                    Read-only source HTML from WordPress
+                  </Label>
+                  <Textarea
+                    value={article.rawHtml}
+                    readOnly
+                    className="mt-1 bg-slate-900 border-slate-900/80 text-[9px] font-mono h-40 resize-y text-slate-400"
+                  />
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-950/70 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center justify-between gap-2">
                 <span>Mapping to NIP-23 Long-form</span>
                 <span className="text-[9px] text-slate-500">
-                  Everything on this side becomes your Nostr article
+                  Everything here becomes your Nostr article metadata
                 </span>
               </CardTitle>
             </CardHeader>
@@ -353,7 +369,7 @@ const DraftWeaverPage: React.FC = () => {
                       onFieldChange({ title: e.target.value, identifier: sanitizeIdentifier(e.target.value || article.identifier) })
                     }
                     placeholder="Your long-form title"
-                    className="bg-slate-900/70 border-slate-800/80 text-xs"
+                    className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
@@ -365,7 +381,7 @@ const DraftWeaverPage: React.FC = () => {
                     value={article.identifier}
                     onChange={(e) => onFieldChange({ identifier: sanitizeIdentifier(e.target.value) })}
                     placeholder="auto-generated-from-title"
-                    className="bg-slate-900/70 border-slate-800/80 text-[10px] font-mono"
+                    className="bg-slate-900 border-slate-800/80 text-[10px] font-mono text-slate-200"
                   />
                 </div>
               </div>
@@ -378,8 +394,8 @@ const DraftWeaverPage: React.FC = () => {
                   id="summary"
                   value={article.summary}
                   onChange={(e) => onFieldChange({ summary: e.target.value.slice(0, 420) })}
-                  placeholder="Short human summary for clients and relays."
-                  className="bg-slate-900/70 border-slate-800/80 text-xs h-16"
+                  placeholder="Short summary for clients and relays."
+                  className="bg-slate-900 border-slate-800/80 text-xs h-16 text-slate-100"
                 />
               </div>
 
@@ -392,7 +408,7 @@ const DraftWeaverPage: React.FC = () => {
                   value={article.image ?? ""}
                   onChange={(e) => onFieldChange({ image: e.target.value || undefined })}
                   placeholder="https://..."
-                  className="bg-slate-900/70 border-slate-800/80 text-xs"
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
                 />
               </div>
 
@@ -405,7 +421,7 @@ const DraftWeaverPage: React.FC = () => {
                   value={article.canonicalUrl ?? ""}
                   onChange={(e) => onFieldChange({ canonicalUrl: e.target.value || undefined })}
                   placeholder="https://your-site.com/your-post"
-                  className="bg-slate-900/70 border-slate-800/80 text-xs"
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
                 />
               </div>
 
@@ -425,26 +441,13 @@ const DraftWeaverPage: React.FC = () => {
                     })
                   }
                   placeholder="nostr, education, oer, longform"
-                  className="bg-slate-900/70 border-slate-800/80 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="content" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                  Long-form Content
-                </Label>
-                <Textarea
-                  id="content"
-                  value={article.content}
-                  onChange={(e) => onFieldChange({ content: e.target.value })}
-                  placeholder="Refine your content here. HTML or markdown-like is fine; most clients will render it as-is."
-                  className="bg-slate-900/70 border-slate-800/80 text-[11px] leading-relaxed h-40 resize-y"
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
                 />
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <div className="text-[10px] text-slate-500">
-                  This mapping creates a NIP-23-compatible kind 30023 event with proper tags.
+                <div className="text-[10px] text-slate-500 max-w-xs">
+                  We publish markdown as the event content. Tags carry all queryable metadata.
                 </div>
                 <Button
                   type="button"
@@ -452,7 +455,7 @@ const DraftWeaverPage: React.FC = () => {
                   variant="outline"
                   disabled={!article.identifier || !article.title || !article.content || !user}
                   onClick={handlePublish}
-                  className="text-[10px] px-3 border-sky-500/60 text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+                  className="text-[10px] px-3 border-sky-500/80 text-sky-300 hover:bg-sky-500/10 hover:text-sky-100"
                 >
                   {user ? "Publish to Nostr" : "Log in to Publish"}
                 </Button>
@@ -469,22 +472,22 @@ const DraftWeaverPage: React.FC = () => {
         </section>
 
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card className="bg-slate-950/80 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
             <CardHeader className="pb-2 flex flex-col gap-1">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
                 <span>Nostr Article Preview</span>
-                <span className="text-[9px] text-slate-500">What NIP-23 readers will see</span>
+                <span className="text-[9px] text-slate-500">Markdown-rendered view</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-72 pr-2">
                 <article className="space-y-3">
                   {article.image && (
-                    <div className="relative w-full overflow-hidden rounded-xl border border-slate-800/90 bg-slate-900/80">
+                    <div className="relative w-full overflow-hidden rounded-xl border border-slate-800/90 bg-slate-900/95">
                       <img
                         src={article.image}
                         alt={article.title || "Cover"}
-                        className="w-full h-40 object-cover opacity-95"
+                        className="w-full h-40 object-cover"
                       />
                     </div>
                   )}
@@ -492,7 +495,7 @@ const DraftWeaverPage: React.FC = () => {
                     {article.title || "Your long-form title will appear here"}
                   </h2>
                   {article.summary && (
-                    <p className="text-xs text-slate-400 leading-relaxed">
+                    <p className="text-xs text-slate-300 leading-relaxed">
                       {article.summary}
                     </p>
                   )}
@@ -509,14 +512,14 @@ const DraftWeaverPage: React.FC = () => {
                   <div className="h-px bg-gradient-to-r from-transparent via-slate-700/70 to-transparent my-2" />
                   <div
                     className="prose prose-invert prose-sky max-w-none text-[11px] leading-relaxed [&_a]:text-sky-300 [&_a:hover]:text-sky-200"
-                    dangerouslySetInnerHTML={{ __html: article.content || "" }}
+                    dangerouslySetInnerHTML={{ __html: htmlPreview }}
                   />
                   {article.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-2">
                       {article.tags.map((t) => (
                         <span
                           key={t}
-                          className="px-2 py-0.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-[9px] text-sky-300"
+                          className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700/80 text-[9px] text-sky-300"
                         >
                           #{t}
                         </span>
@@ -528,7 +531,7 @@ const DraftWeaverPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-950/80 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
             <CardHeader className="pb-2 flex flex-col gap-1">
               <CardTitle className="text-sm font-medium flex items-center justify-between">
                 <span>Event Payload</span>
@@ -537,23 +540,23 @@ const DraftWeaverPage: React.FC = () => {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="json">
-                <TabsList className="grid grid-cols-2 mb-2 bg-slate-900/80 border border-slate-800/80">
+                <TabsList className="grid grid-cols-2 mb-2 bg-slate-900/90 border border-slate-800/80">
                   <TabsTrigger value="json" className="text-[9px]">JSON</TabsTrigger>
                   <TabsTrigger value="tags" className="text-[9px]">Tags Only</TabsTrigger>
                 </TabsList>
                 <TabsContent value="json">
                   <ScrollArea className="h-72">
-                    <pre className="text-[9px] leading-relaxed text-sky-300/90 bg-slate-950/90 p-3 rounded-lg border border-slate-900/80 overflow-x-auto">
+                    <pre className="text-[9px] leading-relaxed text-sky-300/90 bg-slate-950/95 p-3 rounded-lg border border-slate-900/80 overflow-x-auto">
                       {jsonPreview}
                     </pre>
                   </ScrollArea>
                 </TabsContent>
                 <TabsContent value="tags">
                   <ScrollArea className="h-72">
-                    <div className="space-y-1 text-[9px] text-sky-200/90 bg-slate-950/90 p-3 rounded-lg border border-slate-900/80">
+                    <div className="space-y-1 text-[9px] text-sky-200/90 bg-slate-950/95 p-3 rounded-lg border border-slate-900/80">
                       {nostrPreview.tags.map((t, idx) => (
                         <div key={`${t.join("-")}-${idx}`} className="flex flex-wrap gap-1">
-                          <span className="px-1.5 py-0.5 rounded bg-slate-900/90 text-slate-400">{t[0]}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-slate-900 text-slate-400">{t[0]}</span>
                           {t.slice(1).map((v, i) => (
                             <span
                               key={`${idx}-${i}`}
