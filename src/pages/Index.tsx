@@ -61,9 +61,9 @@ const Index = () => {
                 exact Nostr event payload, then publish a standards-compliant kind 30023 article to your relays.
               </p>
               <ul className="text-[11px] md:text-xs text-slate-400 space-y-1.5">
-                <li>• Direct import from WordPress REST API.</li>
-                <li>• Clean mapping into NIP-23 (kind 30023) with d / title / summary / image / r / t tags.</li>
-                <li>• Side-by-side article and JSON preview so you know exactly what clients will render.</li>
+                <li>• Direct import from WordPress REST API with embedded media and taxonomies.</li>
+                <li>• Automatic HTML → markdown conversion, correct absolute image URLs, and clean d-tag generation.</li>
+                <li>• Live long-form + JSON preview so you know exactly what NIP-23 content you are publishing.</li>
               </ul>
               <div className="flex flex-wrap gap-3 pt-2">
                 <Link
@@ -99,12 +99,12 @@ const Index = () => {
                   </div>
                   <div className="px-2 py-1 rounded-lg bg-slate-900/90 border border-slate-800/90 flex flex-col gap-0.5">
                     <span className="text-slate-500">tags</span>
-                    <span className="text-sky-300">["d", "learning-in-public"], ["title", "Learning in Public"], …</span>
+                    <span className="text-sky-300">["d", "clean-slug"], ["title", "Your Title"], ["t", "oer"], …</span>
                   </div>
                   <div className="px-2 py-1 rounded-lg bg-slate-900/90 border border-slate-800/90 flex flex-col gap-0.5">
                     <span className="text-slate-500">content</span>
                     <span className="text-slate-300 line-clamp-2">
-                      A clean, portable version of your article, ready for every Nostr long-form client.
+                      Standards-compliant markdown that any NIP-23 client can render beautifully.
                     </span>
                   </div>
                 </div>
@@ -115,20 +115,40 @@ const Index = () => {
 
         <section
           id="how-it-works"
-          className="border-t border-slate-800/70 bg-slate-950/90/50 backdrop-blur-xl"
+          className="border-t border-slate-800/70 bg-slate-950/95 backdrop-blur-xl"
         >
-          <div className="max-w-6xl mx-auto px-4 py-6 grid gap-4 md:grid-cols-3 text-[10px] text-slate-300">
-            <div>
-              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">1. Import</h3>
-              <p>Drop in any public WordPress post URL. DraftWeaver fetches via REST and pulls title, body, excerpt and link.</p>
+          <div className="max-w-6xl mx-auto px-4 py-8 grid gap-4 md:grid-cols-3 text-[10px] text-slate-300">
+            <div className="relative p-4 rounded-xl border border-slate-800/80 bg-slate-950/90">
+              <div className="absolute -left-2 -top-2 h-5 w-5 rounded-full bg-sky-500/20 border border-sky-500/60 flex items-center justify-center text-[8px] text-sky-300 font-semibold">
+                1
+              </div>
+              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">Import from WordPress</h3>
+              <p>
+                Paste any public post URL. DraftWeaver calls the WordPress REST API with <code className="font-mono">_embed=1</code>, pulls
+                title, content, excerpt, canonical link, featured image, and <code className="font-mono">post_tag</code> taxonomy.
+              </p>
             </div>
-            <div>
-              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">2. Map</h3>
-              <p>Edit title, identifier, summary, tags, image and content. The studio generates a clean NIP-23 event.</p>
+
+            <div className="relative p-4 rounded-xl border border-slate-800/80 bg-slate-950/90">
+              <div className="absolute -left-2 -top-2 h-5 w-5 rounded-full bg-violet-500/20 border border-violet-500/60 flex items-center justify-center text-[8px] text-violet-300 font-semibold">
+                2
+              </div>
+              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">Weave &amp; Map</h3>
+              <p>
+                HTML is transformed into clean markdown, relative media URLs are made absolute, the identifier is slugified, and you can
+                refine summary, cover image, and tags. The right panel shows the exact NIP-23 (kind 30023) payload we&apos;ll publish.
+              </p>
             </div>
-            <div>
-              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">3. Publish</h3>
-              <p>Log in with your Nostr key, confirm the preview, and publish directly as kind 30023 to your relays.</p>
+
+            <div className="relative p-4 rounded-xl border border-slate-800/80 bg-slate-950/90">
+              <div className="absolute -left-2 -top-2 h-5 w-5 rounded-full bg-emerald-500/20 border border-emerald-500/60 flex items-center justify-center text-[8px] text-emerald-300 font-semibold">
+                3
+              </div>
+              <h3 className="text-xs font-semibold text-slate-100 mb-1.5">Publish to Nostr</h3>
+              <p>
+                Log in with your Nostr key, verify the live preview, then publish directly to your configured relays (default:
+                <span className="font-mono"> wss://relay.damus.io</span>). Your long-form article is now available to all NIP-23 capable clients.
+              </p>
             </div>
           </div>
         </section>
