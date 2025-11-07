@@ -34,13 +34,16 @@ interface NostrLongformEventPreview {
   tags: string[][];
 }
 
+// Slugify identifier, but preserve unicode letters by only stripping whitespace and punctuation.
 const sanitizeIdentifier = (value: string): string => {
-  return value
-    .toLowerCase()
+  const cleaned = value
     .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64) || "article";
+    .toLowerCase()
+    // Replace any run of characters that are NOT unicode letters or numbers with '-'
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return (cleaned || "article").slice(0, 128);
 };
 
 const extractText = (html: string): string => {
@@ -108,6 +111,7 @@ const DraftWeaverPage: React.FC = () => {
     tags: [],
   });
 
+  const [tagsInput, setTagsInput] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -198,6 +202,7 @@ const DraftWeaverPage: React.FC = () => {
           canonicalUrl: canonical,
           tags,
         });
+        setTagsInput(tags.join(", "));
 
         setStatus("Imported and converted to markdown. Review and refine before publishing.");
       } catch (err) {
@@ -212,6 +217,15 @@ const DraftWeaverPage: React.FC = () => {
   const onFieldChange = useCallback((patch: Partial<MappedArticle>) => {
     setArticle((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const onTagsChange = (value: string) => {
+    setTagsInput(value);
+    const parsed = value
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    setArticle((prev) => ({ ...prev, tags: parsed }));
+  };
 
   const nostrPreview = useMemo(() => buildNostrEvent(article, user?.pubkey), [article, user?.pubkey]);
 
@@ -440,15 +454,8 @@ const DraftWeaverPage: React.FC = () => {
                 </Label>
                 <Input
                   id="tags"
-                  value={article.tags.join(", ")}
-                  onChange={(e) =>
-                    onFieldChange({
-                      tags: e.target.value
-                        .split(",")
-                        .map((t) => t.trim())
-                        .filter(Boolean),
-                    })
-                  }
+                  value={tagsInput}
+                  onChange={(e) => onTagsChange(e.target.value)}
                   placeholder="nostr, education, oer, longform"
                   className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
                 />
