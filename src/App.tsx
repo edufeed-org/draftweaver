@@ -37,8 +37,8 @@ const defaultConfig: AppConfig = {
   theme: "dark",
   relayMetadata: {
     relays: [
-      // Force jumble.social as the default test relay; users can modify via relay manager
-      { url: 'wss://jumble.social', read: true, write: true },
+      // Default to relay.damus.io for testing; users can update via relay settings
+      { url: 'wss://relay.damus.io', read: true, write: true },
     ],
     updatedAt: 0,
   },
