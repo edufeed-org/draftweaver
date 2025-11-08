@@ -2,11 +2,13 @@ import { useNostr } from "@nostrify/react";
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 
 import { useCurrentUser } from "./useCurrentUser";
+import { useAppContext } from "./useAppContext";
 import type { NostrEvent } from "@nostrify/nostrify";
 
 export function useNostrPublish(): UseMutationResult<NostrEvent> {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { config } = useAppContext();
 
   return useMutation({
     mutationFn: async (t: Omit<NostrEvent, "id" | "pubkey" | "sig">) => {
@@ -31,20 +33,26 @@ export function useNostrPublish(): UseMutationResult<NostrEvent> {
         created_at: t.created_at ?? Math.floor(Date.now() / 1000),
       });
 
-      // If no relays are configured, fail fast with a clear message
-      const relays = (nostr as any)?.relays as string[] | undefined;
-      if (Array.isArray(relays) && relays.length === 0) {
-        throw new Error("No write-enabled relays configured. Please add wss://jumble.social or another relay.");
+      // Use current write-enabled relays from config
+      const writeRelays = config.relayMetadata.relays
+        .filter((r) => r.write)
+        .map((r) => r.url);
+
+      if (writeRelays.length === 0) {
+        throw new Error("No write-enabled relays configured. Please enable at least one relay in the DraftWeaver relay selector.");
       }
 
       try {
-        await nostr.event(event, { signal: AbortSignal.timeout(8000) });
+        // Publish only to the selected write relays
+        await nostr.event(event, {
+          signal: AbortSignal.timeout(8000),
+          relays: writeRelays,
+        } as any);
       } catch (err) {
-        // Make AggregateError from Promise.any human-readable
         if (err instanceof AggregateError) {
           throw new Error(
-            "Could not publish to any configured relays. " +
-            "Check that wss://jumble.social (or your selected relays) are reachable and write-enabled."
+            "Could not publish to any selected relays. " +
+            "Check that your chosen relays are reachable and write-enabled."
           );
         }
         throw err;
