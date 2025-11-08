@@ -5,6 +5,7 @@ import { nip19 } from "nostr-tools";
 
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNostrPublish } from "@/hooks/useNostrPublish";
+import { useAppContext } from "@/hooks/useAppContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { LoginArea } from "@/components/auth/LoginArea";
 import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
@@ -21,8 +23,8 @@ interface MappedArticle {
   title: string;
   identifier: string;
   summary: string;
-  content: string; // markdown
-  rawHtml: string; // original HTML from WordPress
+  content: string;
+  rawHtml: string;
   image?: string;
   canonicalUrl?: string;
   tags: string[];
@@ -34,15 +36,12 @@ interface NostrLongformEventPreview {
   tags: string[][];
 }
 
-// Slugify identifier, but preserve unicode letters by only stripping whitespace and punctuation.
 const sanitizeIdentifier = (value: string): string => {
   const cleaned = value
     .trim()
     .toLowerCase()
-    // Replace any run of characters that are NOT unicode letters or numbers with '-'
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
-
   return (cleaned || "article").slice(0, 128);
 };
 
@@ -98,6 +97,7 @@ const DraftWeaverPage: React.FC = () => {
 
   const { user } = useCurrentUser();
   const { mutateAsync: publishEvent } = useNostrPublish();
+  const { config } = useAppContext();
 
   const [wpUrl, setWpUrl] = useState("");
   const [article, setArticle] = useState<MappedArticle>({
@@ -123,9 +123,7 @@ const DraftWeaverPage: React.FC = () => {
 
       try {
         const url = new URL(wpUrl.trim());
-
         const isPostEndpoint = /wp-json\//.test(url.pathname);
-
         let apiUrl: string;
 
         if (isPostEndpoint) {
@@ -133,31 +131,17 @@ const DraftWeaverPage: React.FC = () => {
         } else {
           const last = url.pathname.replace(/\/$/, "");
           const slug = last.split("/").filter(Boolean).pop();
-
-          if (!slug) {
-            throw new Error("Could not infer post slug from URL. Please paste a direct post URL.");
-          }
-
+          if (!slug) throw new Error("Could not infer post slug from URL. Please paste a direct post URL.");
           const base = `${url.protocol}//${url.host}`;
           apiUrl = `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}&_embed=1`;
         }
 
-        const res = await fetch(apiUrl, {
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        if (!res.ok) {
-          throw new Error(`WordPress API responded with ${res.status}`);
-        }
+        const res = await fetch(apiUrl, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`WordPress API responded with ${res.status}`);
 
         const data = await res.json();
-
         const post = Array.isArray(data) ? data[0] : data;
-        if (!post) {
-          throw new Error("No post found for that URL.");
-        }
+        if (!post) throw new Error("No post found for that URL.");
 
         const title = (post.title?.rendered as string | undefined) ?? "";
         const html = (post.content?.rendered as string | undefined) ?? "";
@@ -165,7 +149,6 @@ const DraftWeaverPage: React.FC = () => {
         const summary = extractText(excerptHtml).slice(0, 280);
         const canonical = typeof post.link === "string" ? post.link : wpUrl.trim();
 
-        // Extract cover image
         let image: string | undefined;
         if (typeof post.jetpack_featured_media_url === "string") {
           image = post.jetpack_featured_media_url;
@@ -173,7 +156,6 @@ const DraftWeaverPage: React.FC = () => {
           image = String(post._embedded["wp:featuredmedia"][0].source_url);
         }
 
-        // Extract tags from embedded taxonomies when available
         const tags: string[] = [];
         if (Array.isArray(post._embedded?.["wp:term"])) {
           for (const termGroup of post._embedded["wp:term"]) {
@@ -181,9 +163,7 @@ const DraftWeaverPage: React.FC = () => {
             for (const term of termGroup) {
               if (term.taxonomy === "post_tag") {
                 const value = (term.slug || term.name || "").toString().trim();
-                if (value && !tags.includes(value)) {
-                  tags.push(value);
-                }
+                if (value && !tags.includes(value)) tags.push(value);
               }
             }
           }
@@ -244,7 +224,6 @@ const DraftWeaverPage: React.FC = () => {
         content: nostrPreview.content,
         tags: nostrPreview.tags,
       });
-
       setStatus("Published successfully to Nostr as NIP-23 long-form article.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to publish event.";
@@ -255,6 +234,8 @@ const DraftWeaverPage: React.FC = () => {
 
   const jsonPreview = useMemo(() => JSON.stringify(nostrPreview, null, 2), [nostrPreview]);
   const htmlPreview = useMemo(() => markdownToHtml(article.content), [article.content]);
+
+  const relays = config.relayMetadata.relays.filter((r) => r.write);
 
   return (
     <div
@@ -461,20 +442,44 @@ const DraftWeaverPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-2 gap-3">
                 <div className="text-[10px] text-slate-500 max-w-xs">
                   We publish markdown as the event content. Tags carry all queryable metadata.
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={!article.identifier || !article.title || !article.content || !user}
-                  onClick={handlePublish}
-                  className="text-[10px] px-3 border-sky-500/80 text-sky-300 hover:bg-sky-500/10 hover:text-sky-100"
-                >
-                  {user ? "Publish to Nostr" : "Log in to Publish"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {user && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="text-[9px] px-2 py-1 rounded-full bg-slate-900 border border-slate-700 text-slate-300 hover:border-sky-500 hover:text-sky-300 transition-colors">
+                          Relays: {relays.length > 0 ? relays.map((r) => r.url.replace(/^wss:\/\//, "")).join(", ") : "none"}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 bg-slate-950 border-slate-800 text-[10px] text-slate-200" align="end">
+                        <p className="mb-2 text-slate-400">
+                          Manage your relay list in settings. Events are published to all write-enabled relays.
+                        </p>
+                        <ul className="space-y-1 max-h-32 overflow-y-auto">
+                          {config.relayMetadata.relays.map((r) => (
+                            <li key={r.url} className="flex items-center justify-between gap-2">
+                              <span className="truncate">{r.url}</span>
+                              <span className="text-[8px] text-slate-500">{r.write ? "write" : "read"}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!article.identifier || !article.title || !article.content || !user}
+                    onClick={handlePublish}
+                    className="text-[10px] px-3 border-sky-500/80 text-sky-300 hover:bg-sky-500/10 hover:text-sky-100"
+                  >
+                    {user ? "Publish to Nostr" : "Log in to Publish"}
+                  </Button>
+                </div>
               </div>
 
               {status && <p className="text-[10px] text-sky-300/90 pt-1">{status}</p>}
@@ -498,11 +503,7 @@ const DraftWeaverPage: React.FC = () => {
                 <article className="space-y-3">
                   {article.image && (
                     <div className="relative w-full overflow-hidden rounded-xl border border-slate-800/90 bg-slate-900/95">
-                      <img
-                        src={article.image}
-                        alt={article.title || "Cover"}
-                        className="w-full h-40 object-cover"
-                      />
+                      <img src={article.image} alt={article.title || "Cover"} className="w-full h-40 object-cover" />
                     </div>
                   )}
                   <h2 className="text-lg font-semibold tracking-tight text-slate-50">
