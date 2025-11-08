@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { LoginArea } from "@/components/auth/LoginArea";
 import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
@@ -250,9 +249,9 @@ const DraftWeaverPage: React.FC = () => {
     }));
   };
 
-  const toggleRelayFlag = (url: string, key: "read" | "write") => {
+  const toggleRelayWrite = (url: string) => {
     const next = relays.map((r) =>
-      r.url === url ? { ...r, [key]: !r[key] } : r
+      r.url === url ? { ...r, write: !r.write } : r
     );
     updateRelays(next);
   };
@@ -286,7 +285,6 @@ const DraftWeaverPage: React.FC = () => {
         "flex flex-col"
       )}
     >
-      {/* header omitted for brevity - unchanged */}
       <header className="border-b border-slate-800/80 backdrop-blur-xl bg-slate-950/90 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-4 justify-between">
           <div className="flex items-center gap-3">
@@ -324,10 +322,76 @@ const DraftWeaverPage: React.FC = () => {
       </header>
 
       <main className="flex-1 max-w-6xl mx-auto px-4 py-6 flex flex-col gap-4">
-        {/* Import + Mapping section unchanged except for tags and relays UI below */}
+        {/* Top row: Import + Mapping */}
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)] gap-4">
-          {/* ... Import card code (unchanged) ... */}
-          {/* Mapping card */}
+          {/* Import from WordPress */}
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+            <CardHeader className="pb-3 flex flex-col gap-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse" />
+                  Import from WordPress
+                </span>
+                <span className="text-[10px] text-slate-500">Paste any public post URL</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="wp-url" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  WordPress Post URL
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="wp-url"
+                    placeholder="https://your-site.com/your-post"
+                    value={wpUrl}
+                    onChange={(e) => setWpUrl(e.target.value)}
+                    className="bg-slate-900 border-slate-700/80 text-xs placeholder:text-slate-600 text-slate-100"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    onClick={() => importFromWordPress.mutate()}
+                    disabled={!wpUrl || importFromWordPress.isPending}
+                    className="text-xs px-3 whitespace-nowrap"
+                  >
+                    {importFromWordPress.isPending ? "Fetching..." : "Import"}
+                  </Button>
+                </div>
+              </div>
+
+              <Tabs defaultValue="markdown">
+                <TabsList className="grid grid-cols-2 mb-2 bg-slate-900/90 border border-slate-800/80">
+                  <TabsTrigger value="markdown" className="text-[9px]">Markdown</TabsTrigger>
+                  <TabsTrigger value="html" className="text-[9px]">Original HTML</TabsTrigger>
+                </TabsList>
+                <TabsContent value="markdown">
+                  <Label className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
+                    Editable markdown (stored as Nostr content)
+                  </Label>
+                  <Textarea
+                    value={article.content}
+                    onChange={(e) => onFieldChange({ content: e.target.value })}
+                    className="mt-1 bg-slate-900 border-slate-800/80 text-[11px] leading-relaxed h-40 resize-y text-slate-100"
+                    placeholder="Markdown converted from your WordPress post will appear here."
+                  />
+                </TabsContent>
+                <TabsContent value="html">
+                  <Label className="text-[9px] uppercase tracking-[0.18em] text-slate-500">
+                    Read-only source HTML from WordPress
+                  </Label>
+                  <Textarea
+                    value={article.rawHtml}
+                    readOnly
+                    className="mt-1 bg-slate-900 border-slate-900/80 text-[9px] font-mono h-40 resize-y text-slate-400"
+                  />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+
+          {/* Mapping to NIP-23 */}
           <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center justify-between gap-2">
@@ -338,10 +402,87 @@ const DraftWeaverPage: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* title/identifier/summary/image/canonical/tags inputs unchanged */}
-              {/* ... existing inputs ... */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="title" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    Title
+                  </Label>
+                  <Input
+                    id="title"
+                    value={article.title}
+                    onChange={(e) =>
+                      onFieldChange({ title: e.target.value, identifier: sanitizeIdentifier(e.target.value || article.identifier) })
+                    }
+                    placeholder="Your long-form title"
+                    className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="identifier" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    Identifier (d tag / slug)
+                  </Label>
+                  <Input
+                    id="identifier"
+                    value={article.identifier}
+                    onChange={(e) => onFieldChange({ identifier: sanitizeIdentifier(e.target.value) })}
+                    placeholder="auto-generated-from-title"
+                    className="bg-slate-900 border-slate-800/80 text-[10px] font-mono text-slate-200"
+                  />
+                </div>
+              </div>
 
-              {/* Publish row with inline relay editor */}
+              <div className="space-y-1">
+                <Label htmlFor="summary" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  Summary (optional, max ~280 chars)
+                </Label>
+                <Textarea
+                  id="summary"
+                  value={article.summary}
+                  onChange={(e) => onFieldChange({ summary: e.target.value.slice(0, 420) })}
+                  placeholder="Short summary for clients and relays."
+                  className="bg-slate-900 border-slate-800/80 text-xs h-16 text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="image" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  Cover Image URL
+                </Label>
+                <Input
+                  id="image"
+                  value={article.image ?? ""}
+                  onChange={(e) => onFieldChange({ image: e.target.value || undefined })}
+                  placeholder="https://..."
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="canonical" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  Canonical URL (original WordPress link)
+                </Label>
+                <Input
+                  id="canonical"
+                  value={article.canonicalUrl ?? ""}
+                  onChange={(e) => onFieldChange({ canonicalUrl: e.target.value || undefined })}
+                  placeholder="https://your-site.com/your-post"
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="tags" className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                  Tags (comma-separated)
+                </Label>
+                <Input
+                  id="tags"
+                  value={tagsInput}
+                  onChange={(e) => onTagsChange(e.target.value)}
+                  placeholder="nostr, education, oer, longform"
+                  className="bg-slate-900 border-slate-800/80 text-xs text-slate-100"
+                />
+              </div>
+
               <div className="flex items-center justify-between pt-2 gap-3">
                 <div className="text-[10px] text-slate-500 max-w-xs">
                   We publish markdown as the event content. Tags carry all queryable metadata.
@@ -356,7 +497,7 @@ const DraftWeaverPage: React.FC = () => {
                       </PopoverTrigger>
                       <PopoverContent className="w-72 bg-slate-950 border-slate-800 text-[9px] text-slate-200" align="end">
                         <p className="mb-2 text-slate-400">
-                          Configure which relays DraftWeaver publishes to. Changes apply globally for this app.
+                          Choose which relays DraftWeaver publishes to. Changes apply globally for this app.
                         </p>
                         <div className="space-y-1 max-h-40 overflow-y-auto mb-2">
                           {relays.map((r) => (
@@ -365,20 +506,13 @@ const DraftWeaverPage: React.FC = () => {
                                 <div className="truncate">{r.url}</div>
                                 <div className="flex gap-2 text-[8px] text-slate-500 mt-0.5">
                                   <label className="flex items-center gap-1">
-                                    <Switch
-                                      checked={r.read}
-                                      onCheckedChange={() => toggleRelayFlag(r.url, "read")}
-                                      className="h-3 w-5 data-[state=checked]:bg-emerald-500"
-                                    />
-                                    <span>read</span>
-                                  </label>
-                                  <label className="flex items-center gap-1">
-                                    <Switch
+                                    <input
+                                      type="checkbox"
                                       checked={r.write}
-                                      onCheckedChange={() => toggleRelayFlag(r.url, "write")}
-                                      className="h-3 w-5 data-[state=checked]:bg-sky-500"
+                                      onChange={() => toggleRelayWrite(r.url)}
+                                      className="h-3 w-3 accent-sky-500"
                                     />
-                                    <span>write</span>
+                                    <span>publish</span>
                                   </label>
                                 </div>
                               </div>
@@ -437,8 +571,106 @@ const DraftWeaverPage: React.FC = () => {
           </Card>
         </section>
 
-        {/* Bottom row (preview + payload) remains unchanged */}
-        {/* ... */}
+        {/* Bottom row: Preview + Event payload */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Article preview */}
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+            <CardHeader className="pb-2 flex flex-col gap-1">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Nostr Article Preview</span>
+                <span className="text-[9px] text-slate-500">Markdown-rendered view</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-72 pr-2">
+                <article className="space-y-3">
+                  {article.image && (
+                    <div className="relative w-full overflow-hidden rounded-xl border border-slate-800/90 bg-slate-900/95">
+                      <img src={article.image} alt={article.title || "Cover"} className="w-full h-40 object-cover" />
+                    </div>
+                  )}
+                  <h2 className="text-lg font-semibold tracking-tight text-slate-50">
+                    {article.title || "Your long-form title will appear here"}
+                  </h2>
+                  {article.summary && (
+                    <p className="text-xs text-slate-300 leading-relaxed">{article.summary}</p>
+                  )}
+                  {article.canonicalUrl && (
+                    <a
+                      href={article.canonicalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] text-sky-300 hover:text-sky-200"
+                    >
+                      Original: {article.canonicalUrl}
+                    </a>
+                  )}
+                  <div className="h-px bg-gradient-to-r from-transparent via-slate-700/70 to-transparent my-2" />
+                  <div
+                    className="prose prose-invert prose-sky max-w-none text-[11px] leading-relaxed [&_a]:text-sky-300 [&_a:hover]:text-sky-200"
+                    dangerouslySetInnerHTML={{ __html: htmlPreview }}
+                  />
+                  {article.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-2">
+                      {article.tags.map((t) => (
+                        <span
+                          key={t}
+                          className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700/80 text-[9px] text-sky-300"
+                        >
+                          #{t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          {/* Event payload */}
+          <Card className="bg-slate-950 border-slate-800/80 shadow-xl shadow-black/40 backdrop-blur-xl">
+            <CardHeader className="pb-2 flex flex-col gap-1">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Event Payload</span>
+                <span className="text-[9px] text-slate-500">Exact kind 30023 structure</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="json">
+                <TabsList className="grid grid-cols-2 mb-2 bg-slate-900/90 border border-slate-800/80">
+                  <TabsTrigger value="json" className="text-[9px]">JSON</TabsTrigger>
+                  <TabsTrigger value="tags" className="text-[9px]">Tags Only</TabsTrigger>
+                </TabsList>
+                <TabsContent value="json">
+                  <ScrollArea className="h-72">
+                    <pre className="text-[9px] leading-relaxed text-sky-300/90 bg-slate-950/95 p-3 rounded-lg border border-slate-900/80 overflow-x-auto">
+                      {jsonPreview}
+                    </pre>
+                  </ScrollArea>
+                </TabsContent>
+                <TabsContent value="tags">
+                  <ScrollArea className="h-72">
+                    <div className="space-y-1 text-[9px] text-sky-200/90 bg-slate-950/95 p-3 rounded-lg border border-slate-900/80">
+                      {nostrPreview.tags.map((t, idx) => (
+                        <div key={`${t.join("-")}-${idx}`} className="flex flex-wrap gap-1">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-900 text-slate-400">{t[0]}</span>
+                          {t.slice(1).map((v, i) => (
+                            <span
+                              key={`${idx}-${i}`}
+                              className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20"
+                            >
+                              {v}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </section>
       </main>
     </div>
   );
